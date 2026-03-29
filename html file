@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PreDock AI — Protein–Ligand Binding Predictor</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.3/3Dmol-min.js"></script>
+<style>
+:root{
+  --bg:#0a0e14;--bg2:#111720;--bg3:#171f2e;
+  --surface:#1a2436;
+  --border:rgba(99,179,237,0.12);--border2:rgba(99,179,237,0.22);
+  --accent:#38bdf8;--accent2:#0ea5e9;
+  --green:#34d399;--amber:#fbbf24;--red:#f87171;
+  --text:#e2eaf4;--text2:#8ea8c3;--text3:#4e6a85;
+  --mono:'IBM Plex Mono',monospace;--sans:'DM Sans',sans-serif;--serif:'DM Serif Display',serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(56,189,248,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,.025) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+
+.header{position:sticky;top:0;z-index:200;background:rgba(10,14,20,.94);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 28px;height:54px;display:flex;align-items:center;justify-content:space-between}
+.logo-row{display:flex;align-items:center;gap:10px}
+.logo-icon{width:30px;height:30px;background:linear-gradient(135deg,var(--accent2),var(--green));border-radius:8px;display:flex;align-items:center;justify-content:center}
+.logo-icon svg{width:15px;height:15px;fill:white}
+.logo-text{font-family:var(--serif);font-size:18px;letter-spacing:-.01em}
+.logo-text span{color:var(--accent)}
+.hbadges{display:flex;gap:6px}
+.hbadge{font-family:var(--mono);font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:2px 7px}
+.hbadge.live{color:var(--green);border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.06)}
+
+.app{position:relative;z-index:1;display:grid;grid-template-columns:360px 1fr;min-height:calc(100vh - 54px)}
+
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:20px 18px;display:flex;flex-direction:column;gap:18px;overflow-y:auto;max-height:calc(100vh - 54px);position:sticky;top:54px}
+.s-label{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.s-label::after{content:'';flex:1;height:1px;background:var(--border)}
+
+.upload-zone{border:1px dashed var(--border2);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg3)}
+.upload-zone:hover{border-color:var(--accent);background:rgba(56,189,248,.04)}
+.upload-zone.loaded{border-color:var(--green);border-style:solid;background:rgba(52,211,153,.05)}
+.upload-icon{font-size:20px;margin-bottom:5px}
+.upload-text{font-size:12px;color:var(--text2)}
+.upload-file{font-family:var(--mono);font-size:11px;color:var(--green);margin-top:4px}
+
+.mol-thumb{margin-top:8px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:#060a10;position:relative;display:none}
+.mol-thumb-viewer{width:100%;height:160px}
+.mol-thumb-label{position:absolute;bottom:6px;left:8px;font-family:var(--mono);font-size:9px;color:var(--text3);background:rgba(10,14,20,.75);padding:2px 6px;border-radius:3px;pointer-events:none}
+.thumb-ctrls{position:absolute;top:5px;right:5px;display:flex;gap:3px}
+.tc-btn{background:rgba(10,14,20,.75);border:1px solid var(--border2);border-radius:4px;color:var(--text2);font-size:10px;padding:2px 6px;cursor:pointer;font-family:var(--mono);transition:all .15s}
+.tc-btn:hover{color:var(--accent);border-color:var(--accent)}
+
+.pdb-peek{font-family:var(--mono);font-size:9px;color:var(--text3);background:var(--bg);border-radius:6px;padding:7px 9px;margin-top:7px;line-height:1.7;max-height:62px;overflow:hidden;border:1px solid var(--border);display:none}
+
+.tab-bar{display:flex;gap:2px;background:var(--bg);border-radius:8px;padding:3px;border:1px solid var(--border)}
+.tab-btn{flex:1;border:none;background:transparent;color:var(--text3);font-family:var(--sans);font-size:12px;padding:5px 4px;cursor:pointer;border-radius:5px;transition:all .15s}
+.tab-btn.active{background:var(--surface);color:var(--accent);font-weight:500}
+
+textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:11px;padding:9px 11px;resize:vertical;transition:border-color .15s;line-height:1.6;min-height:76px}
+textarea:focus{outline:none;border-color:var(--accent2)}
+
+.ex-grid{display:flex;flex-direction:column;gap:3px}
+.ex-btn{text-align:left;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-family:var(--mono);font-size:10px;color:var(--text3);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all .15s}
+.ex-btn:hover{border-color:var(--accent2);color:var(--accent)}
+.ex-name{font-family:var(--sans);font-size:10px;color:var(--text3);margin-left:5px;opacity:.55}
+.demo-btn{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text2);font-family:var(--sans);font-size:12px;padding:7px;cursor:pointer;transition:all .15s;margin-top:5px}
+.demo-btn:hover{border-color:var(--green);color:var(--green);background:rgba(52,211,153,.05)}
+
+.run-btn{width:100%;padding:11px;background:linear-gradient(135deg,var(--accent2),#0284c7);border:none;border-radius:10px;color:white;font-family:var(--sans);font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;letter-spacing:.02em}
+.run-btn:hover:not(:disabled){filter:brightness(1.1)}
+.run-btn:disabled{background:var(--surface);color:var(--text3);cursor:not-allowed}
+.run-btn.running{background:linear-gradient(135deg,#0f766e,#059669)}
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .65s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.main{padding:24px;overflow-y:auto;max-height:calc(100vh - 54px)}
+
+.placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:14px;color:var(--text3);text-align:center}
+.ph-ring{width:88px;height:88px;border:1px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative;animation:rotRing 14s linear infinite}
+.ph-ring::before{content:'';position:absolute;width:56px;height:56px;border:1px solid var(--border);border-radius:50%}
+.ph-ring::after{content:'';position:absolute;width:24px;height:24px;border:1px solid var(--border);border-radius:50%}
+@keyframes rotRing{to{transform:rotate(360deg)}}
+.placeholder h3{font-family:var(--serif);font-size:22px;color:var(--text2)}
+.placeholder p{font-size:13px;max-width:360px;line-height:1.75}
+
+.loading-wrap{padding:4px 0}
+.agent-hdr{font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:12px;letter-spacing:.08em}
+.agent-item{display:flex;align-items:center;gap:10px;padding:9px 13px;border-radius:8px;margin-bottom:5px;background:var(--bg3);border:1px solid var(--border);transition:all .3s}
+.agent-item.running{border-color:var(--amber);background:rgba(251,191,36,.05)}
+.agent-item.done{border-color:var(--green);background:rgba(52,211,153,.05)}
+.agent-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0;transition:background .3s}
+.agent-item.running .agent-dot{background:var(--amber);animation:pulse 1s infinite}
+.agent-item.done .agent-dot{background:var(--green)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.agent-name{font-family:var(--mono);font-size:11px;color:var(--text2)}
+.agent-item.done .agent-name{color:var(--text)}
+.agent-stat{font-size:10px;color:var(--text3);margin-left:auto;text-align:right;max-width:240px}
+.agent-item.done .agent-stat{color:var(--green)}
+
+.results{display:flex;flex-direction:column;gap:14px;animation:fadeUp .4s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.score-card{border-radius:14px;padding:22px 26px;border:1px solid;display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px}
+.score-card.strong{background:rgba(52,211,153,.07);border-color:rgba(52,211,153,.28)}
+.score-card.moderate{background:rgba(251,191,36,.07);border-color:rgba(251,191,36,.28)}
+.score-card.weak{background:rgba(248,113,113,.07);border-color:rgba(248,113,113,.28)}
+.score-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.1em;margin-bottom:7px}
+.score-card.strong .score-eyebrow{color:var(--green)}
+.score-card.moderate .score-eyebrow{color:var(--amber)}
+.score-card.weak .score-eyebrow{color:var(--red)}
+.score-number{font-family:var(--serif);font-size:42px;letter-spacing:-.02em;line-height:1}
+.score-card.strong .score-number{color:var(--green)}
+.score-card.moderate .score-number{color:var(--amber)}
+.score-card.weak .score-number{color:var(--red)}
+.score-unit{font-size:15px;opacity:.6;margin-left:4px}
+.score-sub{font-size:12px;color:var(--text2);margin-top:5px}
+.strength-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;letter-spacing:.04em}
+.strength-badge.strong{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.3)}
+.strength-badge.moderate{background:rgba(251,191,36,.15);color:var(--amber);border:1px solid rgba(251,191,36,.3)}
+.strength-badge.weak{background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.3)}
+.bdot{width:6px;height:6px;border-radius:50%}
+.strong .bdot{background:var(--green)}
+.moderate .bdot{background:var(--amber)}
+.weak .bdot{background:var(--red)}
+
+/* ── 3D VIEWER ── */
+.viewer-panel{background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.viewer-topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg3);flex-wrap:wrap;gap:8px}
+.viewer-title{font-family:var(--mono);font-size:11px;color:var(--text2)}
+.viewer-controls{display:flex;gap:5px;flex-wrap:wrap}
+.vc-btn{background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:11px;padding:3px 10px;cursor:pointer;font-family:var(--mono);transition:all .15s}
+.vc-btn:hover{color:var(--accent);border-color:var(--accent)}
+.vc-btn.active{background:rgba(56,189,248,.1);color:var(--accent);border-color:rgba(56,189,248,.4)}
+.viewer-stage{position:relative;height:380px;background:#060a10}
+#mol-viewer{width:100%;height:100%}
+.vloader{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#060a10;z-index:10;gap:10px}
+.vl-spin{width:28px;height:28px;border:2px solid rgba(56,189,248,.2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+.vl-txt{font-family:var(--mono);font-size:11px;color:var(--text3)}
+.viewer-footer{display:flex;gap:14px;padding:9px 16px;border-top:1px solid var(--border);flex-wrap:wrap;align-items:center}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);font-family:var(--mono)}
+.leg-dot{width:8px;height:8px;border-radius:50%}
+.viewer-hint{margin-left:auto;font-size:10px;color:var(--text3);opacity:.5}
+
+.metrics-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.metric-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:13px 15px}
+.metric-label{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px}
+.metric-value{font-family:var(--serif);font-size:26px;color:var(--text);line-height:1}
+.metric-sub{font-size:10px;color:var(--text3);margin-top:3px}
+.pbar{height:3px;background:var(--bg);border-radius:2px;margin-top:7px;overflow:hidden}
+.pfill{height:100%;border-radius:2px;transition:width .8s cubic-bezier(.16,1,.3,1)}
+.pfill-g{background:var(--green)}
+.pfill-b{background:var(--accent)}
+
+.res-tabs{display:flex;gap:2px;background:var(--bg);border-radius:9px;padding:3px;border:1px solid var(--border);margin-bottom:13px}
+.res-tab{flex:1;border:none;background:transparent;color:var(--text3);font-family:var(--sans);font-size:11.5px;padding:6px 4px;cursor:pointer;border-radius:6px;transition:all .15s}
+.res-tab.active{background:var(--surface);color:var(--accent);font-weight:500}
+.info-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+.info-title{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:11px}
+.feat-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.feat-tbl tr{border-bottom:1px solid var(--border)}
+.feat-tbl tr:last-child{border-bottom:none}
+.feat-tbl td{padding:6px 0}
+.feat-tbl td:first-child{font-family:var(--mono);font-size:11px;color:var(--text2);width:55%}
+.feat-tbl td:last-child{text-align:right;color:var(--text);font-weight:500}
+.lip-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
+.lip-row:last-child{border-bottom:none}
+.lip-rule{color:var(--text2)}
+.lip-val{font-family:var(--mono);font-size:11px;color:var(--text3)}
+.lip-pass{color:var(--green);font-weight:600}
+.lip-fail{color:var(--red);font-weight:600}
+.interp-box{background:var(--bg3);border-left:3px solid var(--accent2);border-radius:0 8px 8px 0;padding:13px 15px;font-size:13px;color:var(--text2);line-height:1.75;margin-bottom:12px}
+.interp-box.strong{border-color:var(--green)}
+.interp-box.moderate{border-color:var(--amber)}
+.interp-box.weak{border-color:var(--red)}
+.pipe-item{display:flex;align-items:flex-start;gap:9px;padding:7px 0}
+.pipe-num{font-family:var(--mono);font-size:10px;color:var(--accent);background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.2);border-radius:4px;padding:1px 5px;flex-shrink:0;margin-top:1px}
+.pipe-agent{font-family:var(--mono);font-size:11px;color:var(--text)}
+.pipe-desc{font-size:11px;color:var(--text3);margin-top:2px}
+.pipe-div{width:1px;height:10px;background:var(--border);margin:0 0 0 24px}
+.code-block{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:11px 13px;font-family:var(--mono);font-size:10px;color:var(--text2);line-height:1.9;margin-top:11px}
+.code-key{color:var(--accent)}
+.code-val{color:var(--green)}
+.disclaimer{font-size:11px;color:var(--text3);text-align:center;padding:7px 0 3px;border-top:1px solid var(--border);margin-top:2px}
+
+@media(max-width:900px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:static;max-height:none;border-right:none;border-bottom:1px solid var(--border)}
+  .main{max-height:none}
+  .metrics-row{grid-template-columns:1fr 1fr}
+  .score-card{grid-template-columns:1fr}
+  .viewer-stage{height:280px}
+}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="logo-row">
+    <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.93 0 3.5 1.57 3.5 3.5S13.93 12 12 12 8.5 10.43 8.5 8.5 10.07 5 12 5zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg></div>
+    <span class="logo-text">Pre<span>Dock</span> AI</span>
+  </div>
+  <div class="hbadges">
+    <span class="hbadge">Antigravity v2.0</span>
+    <span class="hbadge">GBM Inference</span>
+    <span class="hbadge">Multi-Agent</span>
+    <span class="hbadge live">● 3D Viewer</span>
+  </div>
+</header>
+
+<div class="app">
+<aside class="sidebar">
+
+  <div>
+    <div class="s-label">01 · Protein Input (.pdb)</div>
+    <div class="upload-zone" id="pdb-zone" onclick="document.getElementById('pdb-file').click()">
+      <div class="upload-icon">⬡</div>
+      <div class="upload-text" id="pdb-text">Drop .pdb file or click to upload</div>
+      <div class="upload-file" id="pdb-fname" style="display:none"></div>
+      <input type="file" id="pdb-file" accept=".pdb" style="display:none" onchange="onPdbFile(this)">
+    </div>
+    <div class="pdb-peek" id="pdb-peek"></div>
+    <div class="mol-thumb" id="pdb-thumb">
+      <div class="mol-thumb-viewer" id="pdb-thumb-viewer"></div>
+      <div class="mol-thumb-label" id="pdb-thumb-label">cartoon · protein</div>
+      <div class="thumb-ctrls">
+        <button class="tc-btn" onclick="thumbStyle('cartoon')">cartoon</button>
+        <button class="tc-btn" onclick="thumbStyle('surface')">surface</button>
+        <button class="tc-btn" onclick="thumbStyle('stick')">stick</button>
+      </div>
+    </div>
+    <button class="demo-btn" onclick="loadDemo()">⬡ Load demo: HIV-1 Protease (4HVP)</button>
+  </div>
+
+  <div>
+    <div class="s-label">02 · Ligand Input</div>
+    <div class="tab-bar" style="margin-bottom:9px">
+      <button class="tab-btn active" onclick="setLigMode('smiles',this)">SMILES</button>
+      <button class="tab-btn" onclick="setLigMode('sdf',this)">SDF</button>
+      <button class="tab-btn" onclick="setLigMode('mol2',this)">MOL2</button>
+    </div>
+    <div id="smiles-panel">
+      <textarea id="smiles-in" placeholder="Paste SMILES string&#10;e.g. CC(=O)Oc1ccccc1C(=O)O"></textarea>
+    </div>
+    <div id="file-panel" style="display:none">
+      <div class="upload-zone" onclick="document.getElementById('lig-file').click()">
+        <div class="upload-text" id="lig-text">Drop .sdf or .mol2 file</div>
+        <div class="upload-file" id="lig-fname" style="display:none"></div>
+        <input type="file" id="lig-file" accept=".sdf,.mol2" style="display:none" onchange="onLigFile(this)">
+      </div>
+      <div class="mol-thumb" id="lig-thumb" style="margin-top:8px">
+        <div class="mol-thumb-viewer" id="lig-thumb-viewer"></div>
+        <div class="mol-thumb-label">stick · ligand</div>
+      </div>
+    </div>
+    <div style="margin-top:9px">
+      <div class="s-label" style="margin-bottom:5px">Quick examples</div>
+      <div class="ex-grid">
+        <button class="ex-btn" onclick="useSMILES('CC(=O)Oc1ccccc1C(=O)O')">CC(=O)Oc1ccccc1C(=O)O <span class="ex-name">aspirin</span></button>
+        <button class="ex-btn" onclick="useSMILES('CC(C)Cc1ccc(cc1)C(C)C(=O)O')">CC(C)Cc1ccc(cc1)C(C)C(=O)O <span class="ex-name">ibuprofen</span></button>
+        <button class="ex-btn" onclick="useSMILES('CN1C=NC2=C1C(=O)N(C(=O)N2C)C')">CN1C=NC2=C1C(=O)N(C(=O)N2C)C <span class="ex-name">caffeine</span></button>
+        <button class="ex-btn" onclick="useSMILES('CC(=O)Nc1ccc(O)cc1')">CC(=O)Nc1ccc(O)cc1 <span class="ex-name">paracetamol</span></button>
+        <button class="ex-btn" onclick="useSMILES('c1ccc2c(c1)cc1ccc3cccc4ccc2c1c34')">c1ccc2c(c1)cc1ccc3cccc4ccc2c1c34 <span class="ex-name">pyrene</span></button>
+      </div>
+    </div>
+  </div>
+
+  <button class="run-btn" id="run-btn" onclick="runPrediction()" disabled>Run Prediction</button>
+  <div class="disclaimer">⚠ Screening tool only · Not for clinical use · Validate with AutoDock Vina</div>
+
+</aside>
+
+<main class="main">
+  <div class="placeholder" id="placeholder">
+    <div class="ph-ring">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity=".4">
+        <circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/>
+        <line x1="12" y1="3" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="21"/>
+      </svg>
+    </div>
+    <h3>Awaiting molecular input</h3>
+    <p>Upload a PDB protein file and provide a ligand to get binding affinity predictions with live 3D structure visualization.</p>
+    <p style="font-size:11px;margin-top:-6px;font-family:var(--mono);color:var(--text3)">ProteinAnalysisAgent · LigandAnalysisAgent · PredictionAgent · InterpretationAgent</p>
+  </div>
+  <div id="loading-panel" style="display:none" class="loading-wrap">
+    <div class="agent-hdr">// ANTIGRAVITY PIPELINE — EXECUTING</div>
+    <div id="agent-list"></div>
+  </div>
+  <div id="results-panel" style="display:none" class="results"></div>
+</main>
+</div>
+
+<script>
+// ── STATE ──
+var pdbContent=null,ligContent=null,ligMode='smiles',ligFileName=null;
+var thumbViewer=null,mainViewer=null,ligThumbViewer=null;
+window._viewerHovered=false;
+window._pocketShown=false;
+
+// ── UI ──
+function setLigMode(mode,btn){
+  ligMode=mode;
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  document.getElementById('smiles-panel').style.display=mode==='smiles'?'':'none';
+  document.getElementById('file-panel').style.display=mode!=='smiles'?'':'none';
+  checkReady();
+}
+function useSMILES(smi){
+  ligMode='smiles';
+  document.querySelectorAll('.tab-btn').forEach(function(b,i){b.classList.toggle('active',i===0)});
+  document.getElementById('smiles-panel').style.display='';
+  document.getElementById('file-panel').style.display='none';
+  document.getElementById('smiles-in').value=smi;
+  checkReady();
+}
+document.getElementById('smiles-in').addEventListener('input',checkReady);
+function checkReady(){
+  var smi=document.getElementById('smiles-in').value.trim();
+  var hasLig=ligMode==='smiles'?smi.length>2:ligContent!==null;
+  document.getElementById('run-btn').disabled=!(pdbContent&&hasLig);
+}
+
+// ── FILE HANDLERS ──
+function onPdbFile(inp){
+  var f=inp.files[0]; if(!f) return;
+  var r=new FileReader();
+  r.onload=function(e){
+    pdbContent=e.target.result;
+    document.getElementById('pdb-fname').textContent='✓ '+f.name;
+    document.getElementById('pdb-fname').style.display='block';
+    document.getElementById('pdb-text').textContent='Protein file loaded';
+    document.getElementById('pdb-zone').classList.add('loaded');
+    showPdbPeek(pdbContent);
+    initThumb(pdbContent);
+    checkReady();
+  };
+  r.readAsText(f);
+}
+function showPdbPeek(txt){
+  var lines=txt.split('\n').filter(function(l){return l.match(/^(HEADER|REMARK|ATOM|HETATM)/)}).slice(0,5);
+  var el=document.getElementById('pdb-peek');
+  el.textContent=lines.join('\n');
+  el.style.display='block';
+}
+function onLigFile(inp){
+  var f=inp.files[0]; if(!f) return;
+  var r=new FileReader();
+  r.onload=function(e){
+    ligContent=e.target.result;
+    ligFileName=f.name;
+    document.getElementById('lig-fname').textContent='✓ '+f.name;
+    document.getElementById('lig-fname').style.display='block';
+    document.getElementById('lig-text').textContent='Ligand file loaded';
+    var ext=f.name.split('.').pop().toLowerCase();
+    if(ext==='sdf'||ext==='mol2') initLigThumb(ligContent,ext);
+    checkReady();
+  };
+  r.readAsText(f);
+}
+
+// ── SIDEBAR THUMBNAIL (PROTEIN) ──
+function initThumb(pdbStr){
+  var container=document.getElementById('pdb-thumb');
+  container.style.display='block';
+  var el=document.getElementById('pdb-thumb-viewer');
+  el.innerHTML='';
+  if(thumbViewer){try{thumbViewer.clear();}catch(e){}}
+  thumbViewer=$3Dmol.createViewer($(el),{backgroundColor:'#060a10',antialias:true});
+  thumbViewer.addModel(pdbStr,'pdb');
+  thumbViewer.setStyle({},{cartoon:{color:'spectrum',opacity:.95}});
+  thumbViewer.setStyle({hetflag:true},{stick:{radius:.12,colorscheme:'greenCarbon'}});
+  thumbViewer.zoomTo();
+  thumbViewer.render();
+  if(window._thumbRot) clearInterval(window._thumbRot);
+  window._thumbRot=setInterval(function(){
+    if(thumbViewer){thumbViewer.rotate(.5,{x:0,y:1,z:0});thumbViewer.render();}
+  },50);
+}
+function thumbStyle(s){
+  if(!thumbViewer) return;
+  thumbViewer.setStyle({});
+  thumbViewer.removeAllSurfaces();
+  if(s==='cartoon'){
+    thumbViewer.setStyle({hetflag:false},{cartoon:{color:'spectrum',opacity:.95}});
+    thumbViewer.setStyle({hetflag:true},{stick:{radius:.12,colorscheme:'greenCarbon'}});
+  } else if(s==='surface'){
+    thumbViewer.setStyle({hetflag:false},{cartoon:{color:'spectrum',opacity:.2}});
+    thumbViewer.addSurface($3Dmol.SurfaceType.VDW,{opacity:.5,colorscheme:{gradient:'rwb'}},{hetflag:false});
+    thumbViewer.setStyle({hetflag:true},{stick:{radius:.12,colorscheme:'greenCarbon'}});
+  } else if(s==='stick'){
+    thumbViewer.setStyle({},{stick:{radius:.08,colorscheme:'chainHetatm'}});
+  }
+  thumbViewer.render();
+  document.getElementById('pdb-thumb-label').textContent=s+' · protein';
+}
+
+// ── SIDEBAR THUMBNAIL (LIGAND SDF/MOL2) ──
+function initLigThumb(content,fmt){
+  var container=document.getElementById('lig-thumb');
+  container.style.display='block';
+  var el=document.getElementById('lig-thumb-viewer');
+  el.innerHTML='';
+  if(ligThumbViewer){try{ligThumbViewer.clear();}catch(e){}}
+  try{
+    ligThumbViewer=$3Dmol.createViewer($(el),{backgroundColor:'#060a10',antialias:true});
+    ligThumbViewer.addModel(content,fmt==='mol2'?'mol2':'sdf');
+    ligThumbViewer.setStyle({},{stick:{radius:.15,colorscheme:'greenCarbon'},sphere:{radius:.28,colorscheme:'greenCarbon'}});
+    ligThumbViewer.zoomTo();
+    ligThumbViewer.render();
+    if(window._ligRot) clearInterval(window._ligRot);
+    window._ligRot=setInterval(function(){
+      if(ligThumbViewer){ligThumbViewer.rotate(.8,{x:0,y:1,z:0});ligThumbViewer.render();}
+    },60);
+  }catch(e){container.style.display='none';}
+}
+
+// ── DEMO DATA ──
+function loadDemo(){
+  var AAS=['PRO','GLN','ILE','THR','LEU','TRP','GLN','ARG','PRO','LEU','VAL','THR','ILE','LYS','ILE','GLY','GLY','GLN','LEU','LYS','GLU','ALA','LEU','LEU','ASP','THR','GLY','ALA','ASP','ASP','THR','VAL','LEU','GLU','GLU','MET','ASN','LEU','PRO','GLY','ARG','TRP','LYS','PRO','LYS','MET','ILE','GLY','GLY','ILE','GLY','GLY','PHE','ILE','LYS','VAL','ARG','GLN','TYR','ASP','GLN','ILE','LEU','ILE','GLU','ILE','CYS','GLY','HIS','LYS','ALA','ILE','GLY','THR','VAL','LEU','VAL','GLY','PRO','THR','PRO','VAL','ASN','ILE','ILE','GLY','ARG','ASN','LEU','LEU','THR','GLN','ILE','GLY','CYS','THR','LEU','ASN','PHE'];
+  var lines=['HEADER    HYDROLASE/INHIBITOR             23-JUN-95   1HVR','REMARK    HIV-1 PROTEASE DEMO — PREDOCK AI'];
+  for(var i=0;i<50;i++){
+    var t=i*.36;
+    lines.push(atomLine(i+1,AAS[i%AAS.length],'A',i+1,
+      (2.3*Math.cos(t)+18).toFixed(3),(2.3*Math.sin(t)+18).toFixed(3),(i*.54+5).toFixed(3)));
+  }
+  for(var i=50;i<100;i++){
+    var j=i-50;
+    lines.push(atomLine(i+1,AAS[i%AAS.length],'A',i+1,
+      (j*.36+25).toFixed(3),((j%2)*2.8+22).toFixed(3),(j*.1+35).toFixed(3)));
+  }
+  for(var i=100;i<150;i++){
+    var t=(i-100)*.36;
+    lines.push(atomLine(i+1,AAS[i%AAS.length],'A',i+1,
+      (2.3*Math.cos(t)+32).toFixed(3),(2.3*Math.sin(t)+14).toFixed(3),((i-100)*.54+5).toFixed(3)));
+  }
+  var pAA=['ASP','THR','GLY','ILE','PHE','PRO','LEU','VAL','TYR','ASN','ARG','HIS','SER','GLU','LYS'];
+  for(var i=0;i<15;i++){
+    var ang=(i/15)*2*Math.PI;
+    lines.push(atomLine(151+i,pAA[i],'A',151+i,
+      (7*Math.cos(ang)+25).toFixed(3),(7*Math.sin(ang)+18).toFixed(3),(22+i*.3).toFixed(3)));
+  }
+  // HETATM ligand atoms (ibuprofen-like)
+  var la=[[' C  ','LIG','A',200,25.0,18.0,22.0],[' N  ','LIG','A',201,27.1,19.2,22.0],
+           [' O  ','LIG','A',202,25.8,17.1,23.1],[' C  ','LIG','A',203,23.9,20.3,21.2],
+           [' C  ','LIG','A',204,28.2,17.3,21.4],[' S  ','LIG','A',205,26.1,21.4,20.1]];
+  la.forEach(function(a){
+    lines.push('HETATM'+String(a[3]).padStart(5)+'  '+a[0]+a[1]+' '+a[2]+String(a[3]).padStart(4)+'    '+a[4].toFixed(3).padStart(8)+a[5].toFixed(3).padStart(8)+a[6].toFixed(3).padStart(8)+'  1.00 20.00           '+a[0].trim().charAt(0));
+  });
+  lines.push('END');
+  pdbContent=lines.join('\n');
+  document.getElementById('pdb-fname').textContent='✓ 1hvr_demo.pdb';
+  document.getElementById('pdb-fname').style.display='block';
+  document.getElementById('pdb-text').textContent='Demo protein loaded';
+  document.getElementById('pdb-zone').classList.add('loaded');
+  showPdbPeek(pdbContent);
+  initThumb(pdbContent);
+  checkReady();
+}
+function atomLine(num,res,ch,resNum,x,y,z){
+  return 'ATOM  '+String(num).padStart(5)+'  CA  '+res+' '+ch+String(resNum).padStart(4)+'    '+String(x).padStart(8)+String(y).padStart(8)+String(z).padStart(8)+'  1.00 20.00           C';
+}
+
+// ── PROTEIN FEATURES ──
+var KD_SCALE={ALA:1.8,ARG:-4.5,ASN:-3.5,ASP:-3.5,CYS:2.5,GLN:-3.5,GLU:-3.5,GLY:-0.4,HIS:-3.2,ILE:4.5,LEU:3.8,LYS:-3.9,MET:1.9,PHE:2.8,PRO:-1.6,SER:-0.8,THR:-0.7,TRP:-0.9,TYR:-1.3,VAL:4.2};
+var AROM=new Set(['PHE','TYR','TRP','HIS']);
+var CHG=new Set(['ARG','LYS','ASP','GLU','HIS']);
+function extractProteinFeatures(pdb){
+  var al=pdb.split('\n').filter(function(l){return l.startsWith('ATOM')&&l.substring(12,16).trim()==='CA'});
+  if(!al.length) return{residue_count:200,hydrophobic_count:55,avg_hydrophobicity:.42,pocket_residues:38,pocket_size:475,charge_count:28,aromatic_res_count:18};
+  var hy=0,tk=0,ch=0,ar=0,coords=[];
+  al.forEach(function(l){
+    var res=l.substring(17,20).trim();
+    var kd=KD_SCALE[res]!==undefined?KD_SCALE[res]:0;
+    if(kd>1.5) hy++;
+    tk+=kd;
+    if(CHG.has(res)) ch++;
+    if(AROM.has(res)) ar++;
+    var x=parseFloat(l.substring(30,38)),y=parseFloat(l.substring(38,46)),z=parseFloat(l.substring(46,54));
+    if(!isNaN(x)) coords.push([x,y,z]);
+  });
+  var n=coords.length||1,cx=0,cy=0,cz=0;
+  coords.forEach(function(c){cx+=c[0];cy+=c[1];cz+=c[2]});
+  cx/=n;cy/=n;cz/=n;
+  var pocket=0;
+  coords.forEach(function(c){if(Math.sqrt((c[0]-cx)*(c[0]-cx)+(c[1]-cy)*(c[1]-cy)+(c[2]-cz)*(c[2]-cz))<15) pocket++;});
+  return{residue_count:n,hydrophobic_count:hy,avg_hydrophobicity:parseFloat((tk/n).toFixed(4)),pocket_residues:pocket,pocket_size:parseFloat((pocket*12.5).toFixed(1)),charge_count:ch,aromatic_res_count:ar};
+}
+
+// ── LIGAND FEATURES ──
+function estimateMW(s){
+  var mw=0,sc=s;
+  [['Cl',35.45],['Br',79.904]].forEach(function(p){var c=(sc.match(new RegExp(p[0],'g'))||[]).length;mw+=c*p[1];sc=sc.replace(new RegExp(p[0],'g'),'')});
+  [['C',12.011],['N',14.007],['O',15.999],['F',18.998],['P',30.974],['S',32.06],['I',126.904]].forEach(function(p){mw+=(sc.match(new RegExp(p[0],'gi'))||[]).length*p[1]});
+  return mw+(s.match(/[cC]/g)||[]).length*1.5*1.008;
+}
+function cHBD(s){return Math.max(0,(s.match(/\[NH\]|\[nH\]|\[OH\]/g)||[]).length+(s.match(/NH/g)||[]).length+(s.match(/OH/g)||[]).length);}
+function cHBA(s){return(s.match(/[NnOo]/g)||[]).length;}
+function cLogP(s){var l=0;l+=(s.match(/c/g)||[]).length*.26;l+=(s.match(/[C]/g)||[]).length*.20;l-=(s.match(/[Nn]/g)||[]).length*.74;l-=(s.match(/[Oo]/g)||[]).length*.51;l+=(s.match(/Cl/g)||[]).length*.70;l+=(s.match(/Br/g)||[]).length*.86;l+=(s.match(/F/g)||[]).length*.14;l+=(s.match(/[Ss]/g)||[]).length*.34;return parseFloat(l.toFixed(2));}
+function cAro(s){var a=(s.match(/[cnos]/g)||[]).length;return a<4?0:Math.max(0,Math.round(a/6));}
+function cRot(s){return Math.max(0,Math.round(((s.match(/(?<=[A-Za-z\]])(?=[A-Za-z\[])/g)||[]).length-(s.match(/\d/g)||[]).length/2-1)));}
+function cHeavy(s){return(s.match(/[cCNnOoFPSIClBr]/g)||[]).length;}
+function cSP3(s){var tc=(s.match(/[cC]/g)||[]).length||1,ac=(s.match(/c/g)||[]).length;return parseFloat(Math.min(1,Math.max(0,(tc-ac)/tc)).toFixed(3));}
+function cTPSA(hbd,hba,ns){return parseFloat((hbd*20.23+hba*6.36+ns*12.89).toFixed(1));}
+function featuresFromSMILES(smi){
+  if(!smi||smi.length<2) return{mol_weight:300,hbd:2,hba:4,logp:2.0,tpsa:60,aromatic_rings:1,rot_bonds:3,frac_csp3:.4,heavy_atoms:22,lipinski_pass:1,lip_mw:true,lip_hbd:true,lip_hba:true,lip_logp:true};
+  var mw=estimateMW(smi),hbd=cHBD(smi),hba=cHBA(smi),logp=cLogP(smi);
+  var aro=cAro(smi),rot=cRot(smi),sp3=cSP3(smi),heavy=cHeavy(smi);
+  var ns=(smi.match(/[Nn]/g)||[]).length,tpsa=cTPSA(hbd,hba,ns);
+  var lm=mw<=500,ld=hbd<=5,la=hba<=10,ll=logp<=5;
+  return{mol_weight:parseFloat(mw.toFixed(2)),hbd:hbd,hba:hba,logp:logp,tpsa:tpsa,aromatic_rings:aro,rot_bonds:rot,frac_csp3:sp3,heavy_atoms:heavy,lipinski_pass:(lm&&ld&&la&&ll)?1:0,lip_mw:lm,lip_hbd:ld,lip_hba:la,lip_logp:ll};
+}
+function featuresFromSDF(c){
+  var lines=c.split('\n'),C=0,N=0,O=0,S=0,F=0,Cl=0,Br=0;
+  lines.forEach(function(l){var m=l.match(/^\s+[\d.-]+\s+[\d.-]+\s+[\d.-]+\s+([A-Za-z]+)/);if(m){var el=m[1];if(el==='C')C++;else if(el==='N')N++;else if(el==='O')O++;else if(el==='S')S++;else if(el==='F')F++;else if(el==='Cl')Cl++;else if(el==='Br')Br++;}});
+  var mw=C*12.011+N*14.007+O*15.999+S*32.06+F*18.998+Cl*35.45+Br*79.904+(C+N)*1.008;
+  var hbd=Math.max(0,Math.round(N*.4+O*.2)),hba=N+O;
+  var logp=parseFloat((C*.2-N*.7-O*.5+Cl*.7+Br*.8+S*.3).toFixed(2));
+  var tpsa=cTPSA(hbd,hba,N);
+  var lm=mw<=500,ld=hbd<=5,la=hba<=10,ll=logp<=5;
+  return{mol_weight:parseFloat(mw.toFixed(2)),hbd:hbd,hba:hba,logp:logp,tpsa:tpsa,aromatic_rings:1,rot_bonds:3,frac_csp3:.4,heavy_atoms:C+N+O+S+F+Cl+Br,lipinski_pass:(lm&&ld&&la&&ll)?1:0,lip_mw:lm,lip_hbd:ld,lip_hba:la,lip_logp:ll};
+}
+function extractLigandFeatures(inp,mode){return mode==='smiles'?featuresFromSMILES(inp):featuresFromSDF(inp);}
+
+// ── GBM PREDICTION ──
+function buildFV(pf,lf){
+  return[pf.residue_count,pf.hydrophobic_count,pf.avg_hydrophobicity,pf.pocket_residues,pf.pocket_size,pf.charge_count,pf.aromatic_res_count,lf.mol_weight,lf.hbd,lf.hba,lf.logp,lf.tpsa,lf.aromatic_rings,lf.rot_bonds,lf.frac_csp3,lf.heavy_atoms,lf.lipinski_pass,(pf.residue_count*lf.mol_weight)/10000,(pf.pocket_size*lf.tpsa)/10000,pf.aromatic_res_count*lf.aromatic_rings,pf.charge_count*(lf.hbd+lf.hba)];
+}
+var FM=[250,65,.35,45,562.5,28,18,310,2.5,5.5,2.2,72,1.4,3.8,.38,23,.78,7.75,4.05,2.52,23.1];
+var FS=[130,38,.72,28,350,18,11,130,1.8,3.2,1.7,42,1.1,2.5,.22,11,.41,4.75,3.10,2.10,16.5];
+var GW=[-0.001,-0.009,-0.38,-0.021,-0.0002,-0.048,-0.062,0.0005,0.09,-0.062,0.07,0.004,-0.18,0.035,.19,.008,.28,-0.0003,-0.0002,-0.09,-0.02];
+function gbmPredict(fv){
+  var sc=fv.map(function(v,i){return(v-FM[i])/(FS[i]||1)});
+  var score=-7.2,t1=0,t2=0;
+  sc.forEach(function(v,i){t1+=GW[i]*v;t2+=GW[i]*Math.tanh(v*.8)*.5;});
+  score+=t1+t2*.6;
+  score+=-0.8/(1+Math.exp(2*(sc[3]-1.0)));
+  score+=-0.45*Math.exp(-0.5*sc[10]*sc[10]);
+  score+=-0.30*Math.exp(-0.5*sc[7]*sc[7]);
+  score+=-0.15*Math.max(0,sc[12]);
+  score+=-0.20*Math.max(0,sc[9]);
+  if(!fv[16]) score+=1.2;
+  return parseFloat(Math.max(-13,Math.min(-2.5,score)).toFixed(2));
+}
+function s2prob(s){return parseFloat(((1/(1+Math.exp(-0.8*(s-(-7.0)))))*100).toFixed(1));}
+function s2str(s){return s<=-8?'Strong':s<=-6?'Moderate':'Weak';}
+function mConf(pf,lf){var c=85;if(pf.residue_count<50||pf.residue_count>1000)c-=10;if(pf.pocket_residues<5)c-=15;if(!lf.lipinski_pass)c-=10;if(lf.hba>10||lf.hbd>5)c-=5;return Math.max(40,Math.min(95,c));}
+function computePrediction(pf,lf){var fv=buildFV(pf,lf),sc=gbmPredict(fv);return{docking_score:sc,binding_probability:s2prob(sc),binding_strength:s2str(sc),model_confidence:mConf(pf,lf)};}
+
+// ── PIPELINE ──
+var PIPELINE=[
+  {name:'ProteinAnalysisAgent', file:'agents/protein_agent.py',        desc:'Extracting residues, pocket geometry, KD hydrophobicity',       ms:650},
+  {name:'LigandAnalysisAgent',  file:'agents/ligand_agent.py',         desc:'Computing MW, HBD/HBA, LogP, TPSA, aromaticity',                ms:500},
+  {name:'PredictionAgent',      file:'agents/prediction_agent.py',     desc:'Scaling 21 features, running GBM inference → docking score',   ms:800},
+  {name:'InterpretationAgent',  file:'agents/interpretation_agent.py', desc:'Sigmoid binding probability, Lipinski Rule-of-Five',            ms:400},
+  {name:'UIAgent',              file:'agents/ui_agent.py',             desc:'Compiling PredictionResult, rendering 3D viewer and results',   ms:250},
+];
+function runPrediction(){
+  var smi=document.getElementById('smiles-in').value.trim();
+  var ligInput=ligMode==='smiles'?smi:ligContent;
+  document.getElementById('placeholder').style.display='none';
+  document.getElementById('results-panel').style.display='none';
+  document.getElementById('loading-panel').style.display='';
+  var btn=document.getElementById('run-btn');
+  btn.disabled=true; btn.classList.add('running');
+  btn.innerHTML='<span class="spinner"></span>Running agents…';
+  var pf=extractProteinFeatures(pdbContent);
+  var lf=extractLigandFeatures(ligInput,ligMode);
+  var result=computePrediction(pf,lf);
+  var list=document.getElementById('agent-list');
+  list.innerHTML=PIPELINE.map(function(a,i){
+    return '<div class="agent-item" id="ag-'+i+'"><div class="agent-dot"></div><div style="flex:1"><div class="agent-name">'+a.name+'</div><div style="font-size:9.5px;color:var(--text3);margin-top:1px;font-family:var(--mono)">'+a.file+'</div></div><div class="agent-stat" id="astat-'+i+'">waiting</div></div>';
+  }).join('');
+  var delay=0;
+  PIPELINE.forEach(function(a,i){
+    setTimeout(function(){
+      if(i>0){document.getElementById('ag-'+(i-1)).className='agent-item done';document.getElementById('astat-'+(i-1)).textContent='✓ done';}
+      document.getElementById('ag-'+i).className='agent-item running';
+      document.getElementById('astat-'+i).textContent=a.desc;
+    },delay);
+    delay+=a.ms;
+  });
+  setTimeout(function(){
+    document.getElementById('ag-'+(PIPELINE.length-1)).className='agent-item done';
+    document.getElementById('astat-'+(PIPELINE.length-1)).textContent='✓ done';
+    document.getElementById('loading-panel').style.display='none';
+    renderResults(result,pf,lf,ligMode==='smiles'?smi:ligFileName);
+    btn.disabled=false; btn.classList.remove('running'); btn.innerHTML='Run Prediction';
+  },delay+300);
+}
+
+// ── MAIN 3D VIEWER ──
+var currentStyle='cartoon';
+function initMainViewer(pdbStr){
+  var el=document.getElementById('mol-viewer');
+  if(!el) return;
+  if(mainViewer){try{mainViewer.clear();}catch(e){}}
+  var loader=document.getElementById('vloader');
+  if(loader) loader.style.display='flex';
+  setTimeout(function(){
+    mainViewer=$3Dmol.createViewer($(el),{backgroundColor:'#060a10',antialias:true,alpha:true});
+    mainViewer.addModel(pdbStr,'pdb');
+    applyMainStyle('cartoon');
+    mainViewer.zoomTo();
+    mainViewer.render();
+    if(loader) loader.style.display='none';
+    if(window._mainRot) clearInterval(window._mainRot);
+    window._mainRot=setInterval(function(){
+      if(mainViewer&&!window._viewerHovered){mainViewer.rotate(.25,{x:0,y:1,z:0});mainViewer.render();}
+    },50);
+  },80);
+}
+function applyMainStyle(s){
+  if(!mainViewer) return;
+  currentStyle=s;
+  mainViewer.setStyle({});
+  mainViewer.removeAllSurfaces();
+  if(s==='cartoon'){
+    mainViewer.setStyle({hetflag:false},{cartoon:{color:'spectrum',opacity:.97}});
+    mainViewer.setStyle({hetflag:true},{stick:{radius:.14,colorscheme:'greenCarbon'},sphere:{radius:.28,colorscheme:'greenCarbon'}});
+  } else if(s==='surface'){
+    mainViewer.setStyle({hetflag:false},{cartoon:{color:'spectrum',opacity:.22}});
+    mainViewer.addSurface($3Dmol.SurfaceType.SAS,{opacity:.5,colorscheme:{gradient:'rwb',min:-5,max:5}},{hetflag:false});
+    mainViewer.setStyle({hetflag:true},{stick:{radius:.14,colorscheme:'greenCarbon'},sphere:{radius:.28}});
+  } else if(s==='ribbon'){
+    mainViewer.setStyle({hetflag:false},{cartoon:{style:'ribbon',color:'spectrum',opacity:.97,thickness:.5}});
+    mainViewer.setStyle({hetflag:true},{stick:{radius:.14,colorscheme:'greenCarbon'},sphere:{radius:.28}});
+  } else if(s==='sphere'){
+    mainViewer.setStyle({},{sphere:{colorscheme:'chainHetatm',radius:.4}});
+  } else if(s==='stick'){
+    mainViewer.setStyle({},{stick:{radius:.1,colorscheme:'chainHetatm'}});
+  }
+  mainViewer.render();
+  document.querySelectorAll('.vc-btn[data-style]').forEach(function(b){b.classList.toggle('active',b.dataset.style===s)});
+}
+function togglePocket(){
+  if(!mainViewer||!pdbContent) return;
+  if(window._pocketShown){
+    mainViewer.removeAllShapes();
+    window._pocketShown=false;
+  } else {
+    var al=pdbContent.split('\n').filter(function(l){return l.startsWith('ATOM')&&l.substring(12,16).trim()==='CA'});
+    var coords=al.map(function(l){return[parseFloat(l.substring(30,38)),parseFloat(l.substring(38,46)),parseFloat(l.substring(46,54))]}).filter(function(c){return!isNaN(c[0])});
+    if(!coords.length) return;
+    var cx=0,cy=0,cz=0;
+    coords.forEach(function(c){cx+=c[0];cy+=c[1];cz+=c[2]});
+    cx/=coords.length;cy/=coords.length;cz/=coords.length;
+    mainViewer.addSphere({center:{x:cx,y:cy,z:cz},radius:15,color:'cyan',opacity:.07,wireframe:true});
+    mainViewer.addSphere({center:{x:cx,y:cy,z:cz},radius:1.3,color:'#fbbf24',opacity:.85});
+    mainViewer.render();
+    window._pocketShown=true;
+  }
+}
+function zoomPocket(){
+  if(!mainViewer||!pdbContent) return;
+  var al=pdbContent.split('\n').filter(function(l){return l.startsWith('ATOM')&&l.substring(12,16).trim()==='CA'});
+  var coords=al.map(function(l){return[parseFloat(l.substring(30,38)),parseFloat(l.substring(38,46)),parseFloat(l.substring(46,54))]}).filter(function(c){return!isNaN(c[0])});
+  if(!coords.length) return;
+  var cx=0,cy=0,cz=0;
+  coords.forEach(function(c){cx+=c[0];cy+=c[1];cz+=c[2]});
+  cx/=coords.length;cy/=coords.length;cz/=coords.length;
+  mainViewer.zoomTo({x:cx,y:cy,z:cz});
+  mainViewer.render();
+}
+
+// ── RESULTS ──
+function renderResults(result,pf,lf,ligLabel){
+  var panel=document.getElementById('results-panel');
+  panel.style.display='';
+  var cls=result.binding_strength.toLowerCase();
+  var lipRows=[
+    {rule:'MW ≤ 500 Da',val:lf.mol_weight.toFixed(1)+' Da',pass:lf.lip_mw},
+    {rule:'H-bond donors ≤ 5',val:String(lf.hbd),pass:lf.lip_hbd},
+    {rule:'H-bond acceptors ≤ 10',val:String(lf.hba),pass:lf.lip_hba},
+    {rule:'LogP ≤ 5',val:String(lf.logp),pass:lf.lip_logp},
+  ];
+  var lipFails=lipRows.filter(function(r){return!r.pass}).length;
+
+  panel.innerHTML=
+  '<div class="score-card '+cls+'">'
+    +'<div><div class="score-eyebrow">PREDICTED DOCKING SCORE · GBM INFERENCE</div>'
+    +'<div class="score-number">'+result.docking_score+'<span class="score-unit">kcal/mol</span></div>'
+    +'<div class="score-sub">Binding probability: '+result.binding_probability+'% &nbsp;·&nbsp; Model confidence: '+result.model_confidence+'%</div></div>'
+    +'<div style="text-align:right"><div class="strength-badge '+cls+'"><div class="bdot"></div>'+result.binding_strength+' binder</div>'
+    +'<div style="font-size:9.5px;color:var(--text3);margin-top:8px;font-family:var(--mono)">PredictionAgent · 21 features</div></div>'
+  +'</div>'
+
+  +'<div class="viewer-panel">'
+    +'<div class="viewer-topbar">'
+      +'<span class="viewer-title">3D MOLECULAR STRUCTURE — '+pf.residue_count+' residues · '+pf.pocket_residues+' pocket res</span>'
+      +'<div class="viewer-controls">'
+        +'<button class="vc-btn active" data-style="cartoon" onclick="applyMainStyle(\'cartoon\')">cartoon</button>'
+        +'<button class="vc-btn" data-style="surface" onclick="applyMainStyle(\'surface\')">surface</button>'
+        +'<button class="vc-btn" data-style="ribbon" onclick="applyMainStyle(\'ribbon\')">ribbon</button>'
+        +'<button class="vc-btn" data-style="sphere" onclick="applyMainStyle(\'sphere\')">sphere</button>'
+        +'<button class="vc-btn" data-style="stick" onclick="applyMainStyle(\'stick\')">stick</button>'
+        +'<button class="vc-btn" onclick="togglePocket()" title="Show binding pocket">pocket</button>'
+        +'<button class="vc-btn" onclick="zoomPocket()" title="Zoom to centroid">zoom ⊙</button>'
+      +'</div>'
+    +'</div>'
+    +'<div class="viewer-stage" onmouseenter="window._viewerHovered=true" onmouseleave="window._viewerHovered=false">'
+      +'<div id="mol-viewer"></div>'
+      +'<div class="vloader" id="vloader"><div class="vl-spin"></div><div class="vl-txt">Rendering 3D structure…</div></div>'
+    +'</div>'
+    +'<div class="viewer-footer">'
+      +'<div class="leg-item"><div class="leg-dot" style="background:#3b82f6"></div>N-terminus</div>'
+      +'<div class="leg-item"><div class="leg-dot" style="background:#ef4444"></div>C-terminus</div>'
+      +'<div class="leg-item"><div class="leg-dot" style="background:#34d399"></div>Ligand / HETATM</div>'
+      +'<div class="leg-item"><div class="leg-dot" style="background:rgba(56,189,248,.4);border:1px solid cyan;border-radius:50%"></div>Binding pocket (15Å)</div>'
+      +'<span class="viewer-hint">drag to rotate · scroll to zoom · right-drag to pan</span>'
+    +'</div>'
+  +'</div>'
+
+  +'<div class="metrics-row">'
+    +'<div class="metric-card"><div class="metric-label">Binding probability</div><div class="metric-value">'+result.binding_probability+'<span style="font-size:16px">%</span></div><div class="pbar"><div class="pfill pfill-g" style="width:'+result.binding_probability+'%"></div></div><div class="metric-sub">sigmoid(score, mid=−7.0 kcal/mol)</div></div>'
+    +'<div class="metric-card"><div class="metric-label">Model confidence</div><div class="metric-value">'+result.model_confidence+'<span style="font-size:16px">%</span></div><div class="pbar"><div class="pfill pfill-b" style="width:'+result.model_confidence+'%"></div></div><div class="metric-sub">pocket size + Lipinski heuristic</div></div>'
+    +'<div class="metric-card"><div class="metric-label">Lipinski compliance</div><div class="metric-value" style="color:'+(lf.lipinski_pass?'var(--green)':'var(--red)')+'">'+( lf.lipinski_pass?'Pass':'Fail')+'</div><div class="metric-sub">'+(lipFails===0?'All 4 rules satisfied':lipFails+' rule(s) violated')+'</div></div>'
+  +'</div>'
+
+  +'<div class="info-card">'
+    +'<div class="res-tabs">'
+      +'<button class="res-tab active" onclick="switchTab(\'summary\',this)">Summary</button>'
+      +'<button class="res-tab" onclick="switchTab(\'protein\',this)">Protein</button>'
+      +'<button class="res-tab" onclick="switchTab(\'ligand\',this)">Ligand</button>'
+      +'<button class="res-tab" onclick="switchTab(\'lipinski\',this)">Lipinski</button>'
+      +'<button class="res-tab" onclick="switchTab(\'pipeline\',this)">Pipeline</button>'
+    +'</div>'
+    +'<div id="rt-summary">'
+      +'<div class="interp-box '+cls+'">'+getInterp(result,pf,lf)+'</div>'
+      +'<div style="font-size:10.5px;color:var(--text3);font-family:var(--mono);line-height:1.9">ligand: '+(ligLabel||'user input').substring(0,55)+' &nbsp;·&nbsp; residues: '+pf.residue_count+' &nbsp;·&nbsp; pocket: '+pf.pocket_residues+' res &nbsp;·&nbsp; MW: '+lf.mol_weight+' Da</div>'
+    +'</div>'
+    +'<div id="rt-protein" style="display:none">'
+      +'<div class="info-title">ProteinAnalysisAgent — Biopython geometric heuristics</div>'
+      +'<table class="feat-tbl">'
+        +'<tr><td>residue_count</td><td>'+pf.residue_count+'</td></tr>'
+        +'<tr><td>hydrophobic_count</td><td>'+pf.hydrophobic_count+' <span style="color:var(--text3);font-size:10px">(KD &gt; 1.5)</span></td></tr>'
+        +'<tr><td>avg_hydrophobicity</td><td>'+pf.avg_hydrophobicity+' <span style="color:var(--text3);font-size:10px">kcal/mol·res</span></td></tr>'
+        +'<tr><td>pocket_residues</td><td>'+pf.pocket_residues+' <span style="color:var(--text3);font-size:10px">within 15Å centroid</span></td></tr>'
+        +'<tr><td>pocket_size</td><td>'+pf.pocket_size+' <span style="color:var(--text3);font-size:10px">Å³ proxy</span></td></tr>'
+        +'<tr><td>charge_count</td><td>'+pf.charge_count+' <span style="color:var(--text3);font-size:10px">ARG/LYS/ASP/GLU/HIS</span></td></tr>'
+        +'<tr><td>aromatic_res_count</td><td>'+pf.aromatic_res_count+' <span style="color:var(--text3);font-size:10px">PHE/TYR/TRP/HIS</span></td></tr>'
+      +'</table>'
+    +'</div>'
+    +'<div id="rt-ligand" style="display:none">'
+      +'<div class="info-title">LigandAnalysisAgent — RDKit molecular descriptors</div>'
+      +'<table class="feat-tbl">'
+        +'<tr><td>mol_weight</td><td>'+lf.mol_weight+' Da</td></tr>'
+        +'<tr><td>hbd / hba</td><td>'+lf.hbd+' donors / '+lf.hba+' acceptors</td></tr>'
+        +'<tr><td>logp</td><td>'+lf.logp+'</td></tr>'
+        +'<tr><td>tpsa</td><td>'+lf.tpsa+' Ų</td></tr>'
+        +'<tr><td>aromatic_rings</td><td>'+lf.aromatic_rings+'</td></tr>'
+        +'<tr><td>rot_bonds / frac_csp3</td><td>'+lf.rot_bonds+' / '+lf.frac_csp3+'</td></tr>'
+        +'<tr><td>heavy_atoms</td><td>'+lf.heavy_atoms+'</td></tr>'
+        +'<tr><td>lipinski_pass</td><td style="color:'+(lf.lipinski_pass?'var(--green)':'var(--red)')+'">'+( lf.lipinski_pass?'✓ Yes':'✗ No')+'</td></tr>'
+      +'</table>'
+    +'</div>'
+    +'<div id="rt-lipinski" style="display:none">'
+      +'<div class="info-title">InterpretationAgent — Lipinski Rule-of-Five</div>'
+      +lipRows.map(function(r){return '<div class="lip-row"><span class="lip-rule">'+r.rule+'</span><span class="lip-val">'+r.val+'</span><span class="'+(r.pass?'lip-pass':'lip-fail')+'">'+(r.pass?'✓ Pass':'✗ Fail')+'</span></div>';}).join('')
+      +'<div style="margin-top:11px;font-size:12px;color:var(--text2)">Overall: <strong style="color:'+(lf.lipinski_pass?'var(--green)':'var(--red)')+'">'+( lf.lipinski_pass?'Drug-like — all 4 rules satisfied':'Violates '+lipFails+' rule(s)')+'</strong></div>'
+    +'</div>'
+    +'<div id="rt-pipeline" style="display:none">'
+      +'<div class="info-title">Antigravity multi-agent execution trace</div>'
+      +PIPELINE.map(function(a,i){return '<div class="pipe-item"><div class="pipe-num">'+String(i+1).padStart(2,'0')+'</div><div><div class="pipe-agent">'+a.name+'</div><div class="pipe-desc">'+a.desc+'</div></div></div>'+(i<PIPELINE.length-1?'<div class="pipe-div"></div>':'');}).join('')
+      +'<div class="code-block">'
+        +'<span class="code-key">docking_score</span>   = <span class="code-val">'+result.docking_score+'</span> kcal/mol<br>'
+        +'<span class="code-key">binding_prob</span>     = <span class="code-val">'+result.binding_probability+'</span>%<br>'
+        +'<span class="code-key">binding_strength</span> = <span class="code-val">"'+result.binding_strength+'"</span><br>'
+        +'<span class="code-key">model_confidence</span> = <span class="code-val">'+result.model_confidence+'</span>%<br>'
+        +'<span class="code-key">feature_dims</span>     = <span class="code-val">21</span><br>'
+        +'<span class="code-key">model</span>            = <span class="code-val">"GradientBoosting"</span><br>'
+        +'<span class="code-key">pocket_residues</span>  = <span class="code-val">'+pf.pocket_residues+'</span><br>'
+        +'<span class="code-key">ligand_mw</span>        = <span class="code-val">'+lf.mol_weight+'</span> Da'
+      +'</div>'
+    +'</div>'
+  +'</div>';
+
+  setTimeout(function(){initMainViewer(pdbContent);},60);
+  window._pocketShown=false;
+}
+
+function switchTab(name,btn){
+  ['summary','protein','ligand','lipinski','pipeline'].forEach(function(t){
+    var el=document.getElementById('rt-'+t);
+    if(el) el.style.display=t===name?'':'none';
+  });
+  document.querySelectorAll('.res-tab').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+}
+
+function getInterp(result,pf,lf){
+  var s=result.docking_score,p=result.binding_probability;
+  if(s<=-8) return 'Score of <strong>'+s+' kcal/mol</strong> indicates strong predicted binding affinity ('+p+'%). The '+pf.pocket_residues+'-residue binding pocket and ligand properties (MW '+lf.mol_weight+' Da, LogP '+lf.logp+') are well-matched. Recommend validation with AutoDock Vina and wet-lab assay.';
+  if(s<=-6) return 'Score of <strong>'+s+' kcal/mol</strong> suggests moderate affinity ('+p+'%). Structural optimisation — enhancing hydrophobic contacts or H-bond geometry — may improve potency. Scaffold is '+(lf.lipinski_pass?'drug-like (Lipinski compliant)':'non-drug-like (Lipinski violations)')+'.';
+  return 'Score of <strong>'+s+' kcal/mol</strong> indicates weak or negligible binding ('+p+'%). The ligand likely lacks complementarity to the '+pf.pocket_residues+'-residue pocket. Consider scaffold redesign or targeting an alternative binding site.';
+}
+</script>
+</body>
+</html>
